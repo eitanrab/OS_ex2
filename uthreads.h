@@ -16,8 +16,6 @@ typedef void (*thread_entry_point)(void);
 /* External interface */
 
 
-static const char *const SYSCALL_ERR = "system error: ";
-static const char *const THREAD_LIB_ERR = "thread library error: ";
 /**
  * @brief initializes the thread library.
  *

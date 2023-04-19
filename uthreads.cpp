@@ -15,7 +15,7 @@
 #include <stdbool.h>
 #include <cstdlib>
 #include <memory>
-
+#include <algorithm>
 #ifdef __x86_64__
 /* code for 64 bit Intel arch */
 
@@ -59,15 +59,18 @@ address_t translate_address(address_t addr)
 #endif
 
 template<typename T, typename... Args>
-std::unique_ptr<T> make_unique(Args&&... args)
+std::unique_ptr<T> make_unique (Args &&... args)
 {
-  return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+  return std::unique_ptr<T> (new T (std::forward<Args> (args)...));
 }
 
 enum ThreadState
 {
-  READY, RUNNING, BLOCKED, TERMINATED
+  READY, RUNNING, BLOCKED
 };
+static const char *const SYSCALL_ERR = "system error: ";
+static const char *const THREAD_LIB_ERR = "thread library error: ";
+static const int MAIN_TID = 0;
 
 struct Thread
 {
@@ -93,14 +96,14 @@ void free_memory ()
 {
   for (auto &thread : threads)
   {
-    thread.reset();
+    thread . reset ();
   }
 
   //main_thread.reset(); todo isn't main thread reset in the loop?
 
 }
 
-void block_signals ()
+void block_signal ()
 {
   if (sigprocmask (SIG_BLOCK, &sa . sa_mask, nullptr))
   {
@@ -111,7 +114,7 @@ void block_signals ()
   }
 }
 
-void unblock_signals ()
+void unblock_signal ()
 {
   if (sigprocmask (SIG_UNBLOCK, &sa . sa_mask, nullptr))
   {
@@ -122,18 +125,18 @@ void unblock_signals ()
   }
 }
 
-void timer_handler (int sig)
+void timer_handler (int sig, ThreadState state)
 {
-  block_signals ();
+  block_signal ();
   if (sig != SIGALRM || ready_queue . empty ())
   {
     set_timer ();
-    unblock_signals ();
+    unblock_signal ();
     return;
   } //todo check what happens in first case
 
-  auto curr_thread = threads[current_tid].get();
-  curr_thread -> state = READY;
+  auto curr_thread = threads[current_tid] . get ();
+  curr_thread -> state = state;
   curr_thread -> quantum_life++;
   if (sigsetjmp(curr_thread -> env, 1))
   {
@@ -145,7 +148,7 @@ void timer_handler (int sig)
   }
   current_tid = ready_queue . back ();
   ready_queue . pop_back ();
-  auto jumpto_thread = threads[current_tid].get();
+  auto jumpto_thread = threads[current_tid] . get ();
   jumpto_thread -> state = RUNNING;
 
   //wake up threads
@@ -161,8 +164,13 @@ void timer_handler (int sig)
     }
   }
   set_timer ();
-  unblock_signals ();
+  unblock_signal ();
   siglongjmp (jumpto_thread -> env, 1);
+}
+
+void timer_handler (int sig)
+{
+  timer_handler (sig, READY);
 }
 
 int uthread_init (int quantum_usecs)
@@ -177,7 +185,7 @@ int uthread_init (int quantum_usecs)
   quantum_usecs_sys = quantum_usecs;
 
   // Set up main thread
-  main_thread = make_unique<Thread>();
+  main_thread = make_unique<Thread> ();
   main_thread -> id = 0;
   main_thread -> state = RUNNING;
 
@@ -231,7 +239,7 @@ int get_min_index ()
 
 int uthread_spawn (thread_entry_point entry_point)
 {
-  block_signals ();
+  block_signal ();
   if (entry_point == nullptr)
   {
     std::cerr
@@ -244,10 +252,10 @@ int uthread_spawn (thread_entry_point entry_point)
   {
     std::cerr << THREAD_LIB_ERR << "exceeded maximum number of threads"
               << std::endl;
-    unblock_signals ();
+    unblock_signal ();
     return -1;
   }
-  threads[tid] = make_unique<Thread>();
+  threads[tid] = make_unique<Thread> ();
   // initializes env[tid] to use the right stack, and to run from the function 'entry_point', when we'll use
   // siglongjmp to jump into the thread.
   address_t sp =
@@ -260,7 +268,7 @@ int uthread_spawn (thread_entry_point entry_point)
         << "sigsetjmp failue. saving the thread enviroment failed."
         << std::endl;
     free_memory ();
-    unblock_signals ();
+    unblock_signal ();
     exit (1);
   }
   (threads[tid] -> env -> __jmpbuf)[JB_SP] = translate_address (sp);
@@ -269,55 +277,130 @@ int uthread_spawn (thread_entry_point entry_point)
   {
     std::cerr << "system error: sigemptyset failue.\n";
     free_memory ();
-    unblock_signals();
+    unblock_signal ();
     exit (1);
   }
   threads[tid] -> state = READY;
   threads[tid] -> id = tid;
   ready_queue . insert (ready_queue . begin (), tid);
-  unblock_signals();
+  unblock_signal ();
   return tid;
 }
 
 int uthread_terminate (int tid)
 {
-  block_signals();
-  if(threads[tid] == nullptr){
-    std::cerr<< THREAD_LIB_ERR << "no thread with given id" << std::endl;
+  block_signal ();
+  if (threads[tid] == nullptr)
+  {
+    std::cerr << THREAD_LIB_ERR << "no thread with given id" << std::endl;
+    unblock_signal ();
+    return -1;
+  }
+  if (tid == MAIN_TID)
+  {
+    free_memory ();
+    unblock_signal ();
+    exit (0);
   }
 
+  if (tid == current_tid)
+  {
+    //todo implement this case
+  }
 
-
+  ready_queue . erase (std::remove (ready_queue . begin (),
+                                    ready_queue . end (), tid),
+                       ready_queue . end ());
+  threads[tid] . reset ();
+  unblock_signal ();
   return 0;
 }
 
 int uthread_block (int tid)
 {
+  block_signal ();
+  if (threads[tid] == nullptr)
+  {
+    std::cerr << THREAD_LIB_ERR << "no thread with given id" << std::endl;
+    unblock_signal ();
+    return -1;
+  }
+  if (tid == MAIN_TID)
+  {
+    std::cerr << THREAD_LIB_ERR << "can't block main thread" << std::endl;
+    unblock_signal ();
+    return -1;
+  }
+
+  ready_queue . erase (std::remove (ready_queue . begin (),
+                                    ready_queue . end (), tid),
+                       ready_queue . end ());
+  threads[tid] -> state = BLOCKED;
+
+  if (tid == current_tid)
+  {
+    timer_handler (SIGALRM, BLOCKED);
+  }
+  unblock_signal ();
   return 0;
 }
 
 int uthread_resume (int tid)
 {
+  if (threads[tid] == nullptr)
+  {
+    std::cerr << THREAD_LIB_ERR << "no thread with given id" << std::endl;
+    unblock_signal ();
+    return -1;
+  }
+  threads[tid] -> state = threads[tid] -> state == RUNNING ? RUNNING : READY;
+  if (threads[tid] -> sleep_until == -1)
+  {
+    ready_queue . insert (ready_queue . begin (), tid);
+  }
   return 0;
 }
 
 int uthread_sleep (int num_quantums)
 {
+  block_signal ();
+  if (num_quantums < 0)//todo is this the condition
+  {
+    std::cerr << THREAD_LIB_ERR << "uthread_sleep negative number of qunatums"
+              << std::endl;
+    unblock_signal ();
+    return -1;
+  }
+  if (current_tid == MAIN_TID)
+  {
+    std::cerr << THREAD_LIB_ERR << "main tid can't sleep" << std::endl;
+    unblock_signal ();
+    return -1;
+  }
+  threads[current_tid] -> sleep_until = total_quantums + num_quantums ; //todo should add 1?
+  timer_handler (SIGALRM, BLOCKED);
+  unblock_signal ();
   return 0;
 }
 
 int uthread_get_tid ()
 {
-  return 0;
+  return current_tid;
 }
 
 int uthread_get_total_quantums ()
 {
-  return 0;
+  return quantum_usecs_sys;
 }
 
 int uthread_get_quantums (int tid)
 {
-  return 0;
+  if (threads[tid] == nullptr)
+  {
+    std::cerr << THREAD_LIB_ERR << "no thread with given id" << std::endl;
+    unblock_signal ();
+    return -1;
+  }
+  return threads[tid]->quantum_life+1;
 }
 
