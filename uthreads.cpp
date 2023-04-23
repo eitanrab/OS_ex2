@@ -66,7 +66,7 @@ std::unique_ptr<T> make_unique (Args &&... args)
 
 enum ThreadState
 {
-  READY, RUNNING, BLOCKED
+  READY, RUNNING, BLOCKED, TERMINATED
 };
 static const char *const SYSCALL_ERR = "system error: ";
 static const char *const THREAD_LIB_ERR = "thread library error: ";
@@ -85,7 +85,6 @@ int quantum_usecs_sys;
 int total_quantums = 1;
 int current_tid = 0;
 std::vector<int> ready_queue;
-std::unique_ptr<Thread> main_thread;
 std::unique_ptr<Thread> threads[MAX_THREAD_NUM];
 
 struct sigaction sa{};
@@ -98,9 +97,6 @@ void free_memory ()
   {
     thread . reset ();
   }
-
-  //main_thread.reset(); todo isn't main thread reset in the loop?
-
 }
 
 void block_signal ()
@@ -128,6 +124,7 @@ void unblock_signal ()
 void timer_handler (int sig, ThreadState state)
 {
   block_signal ();
+  total_quantums++;
   if (sig != SIGALRM || ready_queue . empty ())
   {
     set_timer ();
@@ -146,15 +143,16 @@ void timer_handler (int sig, ThreadState state)
     free_memory ();
     exit (1);
   }
-  current_tid = ready_queue . back ();
-  ready_queue . pop_back ();
-  auto jumpto_thread = threads[current_tid] . get ();
-  jumpto_thread -> state = RUNNING;
+
+  //if terminate, reset the thread
+  if (curr_thread->state == TERMINATED){
+    threads[current_tid]. reset ();
+  }
 
   //wake up threads
   for (int i = 0; i < MAX_THREAD_NUM; i++)
   {
-    if (threads[i] -> sleep_until == total_quantums)
+    if (threads[i]!= nullptr and threads[i] -> sleep_until == total_quantums)
     {
       threads[i] -> sleep_until = -1;
       if (threads[i] -> state == READY)
@@ -163,9 +161,17 @@ void timer_handler (int sig, ThreadState state)
       }
     }
   }
+
+  current_tid = ready_queue . back ();
+  ready_queue . pop_back ();
+  auto jumpto_thread = threads[current_tid] . get ();
+  jumpto_thread -> state = RUNNING;
+
+
   set_timer ();
   unblock_signal ();
   siglongjmp (jumpto_thread -> env, 1);
+  unblock_signal ();
 }
 
 void timer_handler (int sig)
@@ -185,10 +191,9 @@ int uthread_init (int quantum_usecs)
   quantum_usecs_sys = quantum_usecs;
 
   // Set up main thread
-  main_thread = make_unique<Thread> ();
-  main_thread -> id = 0;
-  main_thread -> state = RUNNING;
-
+  threads[0] = make_unique<Thread> ();
+  threads[0] -> id = 0;
+  threads[0] -> state = RUNNING;
 
 
   // Install timer_handler as the signal handler for SIGALRM
@@ -209,7 +214,7 @@ void set_timer ()
   }
 
   // Configure the timer to expire after quantum_usecs_sys
-  timer . it_value . tv_sec = 0;        // first time interval, seconds part todo check
+  timer . it_value . tv_sec = 0;        // first time interval, seconds part
   timer . it_value . tv_usec = quantum_usecs_sys;        // first time interval, microseconds part
 
   // configure the timer to expire every 3 sec after that.
@@ -305,7 +310,7 @@ int uthread_terminate (int tid)
 
   if (tid == current_tid)
   {
-    //todo implement this case
+    timer_handler (SIGALRM, TERMINATED);
   }
 
   ready_queue . erase (std::remove (ready_queue . begin (),
