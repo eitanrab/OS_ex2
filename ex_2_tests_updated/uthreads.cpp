@@ -124,7 +124,6 @@ void unblock_signal ()
 void timer_handler (int sig, ThreadState state)
 {
   block_signal ();
-  total_quantums++;
   if(sigsetjmp(threads[current_tid]->env, 1) != 0 ){
     unblock_signal();
     set_timer();
@@ -132,36 +131,9 @@ void timer_handler (int sig, ThreadState state)
     return;
   }
 
-//  if (ready_queue .empty() and state == READY){
-//    auto curr_thread = threads[current_tid] . get ();
-//    curr_thread -> quantum_life++;
-//    total_quantums++;
-//    unblock_signal();
-////    set_timer();
-//    return;
-//  }
-//  if (sig != SIGALRM || ready_queue . empty ())
-//  {
-//    set_timer ();
-//    unblock_signal ();
-//    return;
-//  } //todo check what happens in first case
-
   auto curr_thread = threads[current_tid] . get ();
   curr_thread -> state = state;
-  curr_thread -> quantum_life++;
-//  if (sigsetjmp(curr_thread -> env, 1))
-//  {
-////    std::cerr << SYSCALL_ERR
-////              << "sigsetjmp failue. saving the thread enviroment failed."
-////              << std::endl;
-////    free_memory ();
-////    exit (1);
-//  unblock_signal();
-//  set_timer();
-//  unblock_signal();
-//  return;
-//  }
+
 
   //if terminate, reset the thread
   if (curr_thread->state == TERMINATED){
@@ -176,8 +148,8 @@ void timer_handler (int sig, ThreadState state)
   ready_queue . pop_back ();
   auto jumpto_thread = threads[current_tid] . get ();
   jumpto_thread -> state = RUNNING;
-  unblock_signal ();
-
+  jumpto_thread -> quantum_life++;
+  total_quantums++;
 
   //wake up threads
   for (int i = 0; i < MAX_THREAD_NUM; i++)
