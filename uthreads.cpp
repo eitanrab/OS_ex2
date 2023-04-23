@@ -87,8 +87,8 @@ int current_tid = 0;
 std::vector<int> ready_queue;
 std::unique_ptr<Thread> threads[MAX_THREAD_NUM];
 
-struct sigaction sa{};
-struct itimerval timer{};
+struct sigaction sa {};
+struct itimerval timer;
 
 void set_timer ();
 void free_memory ()
@@ -101,13 +101,13 @@ void free_memory ()
 
 void block_signal ()
 {
-  if (sigprocmask (SIG_BLOCK, &sa . sa_mask, nullptr))
-  {
-    std::cerr << SYSCALL_ERR << "sigprocmask failure. sys block error"
-              << std::endl;
-    free_memory ();
-    exit (1);
-  }
+//  if (sigprocmask (SIG_BLOCK, &sa . sa_mask, nullptr))
+//  {
+//    std::cerr << SYSCALL_ERR << "sigprocmask failure. sys block error"
+//              << std::endl;
+//    free_memory ();
+//    exit (1);
+//  }
 }
 
 void unblock_signal ()
@@ -124,30 +124,32 @@ void unblock_signal ()
 void timer_handler (int sig, ThreadState state)
 {
   block_signal ();
-  total_quantums++;
-  if (sig != SIGALRM || ready_queue . empty ())
-  {
-    set_timer ();
-    unblock_signal ();
+  if(sigsetjmp(threads[current_tid]->env, 1) != 0 ){
+    unblock_signal();
+    set_timer();
+    unblock_signal();
     return;
-  } //todo check what happens in first case
+  }
 
   auto curr_thread = threads[current_tid] . get ();
   curr_thread -> state = state;
-  curr_thread -> quantum_life++;
-  if (sigsetjmp(curr_thread -> env, 1))
-  {
-    std::cerr << SYSCALL_ERR
-              << "sigsetjmp failue. saving the thread enviroment failed."
-              << std::endl;
-    free_memory ();
-    exit (1);
-  }
+
 
   //if terminate, reset the thread
   if (curr_thread->state == TERMINATED){
     threads[current_tid]. reset ();
   }
+  else if (curr_thread->state ==READY && curr_thread->sleep_until ==-1 ){
+    ready_queue . insert (ready_queue . begin (), current_tid);
+  }
+
+
+  current_tid = ready_queue . back ();
+  ready_queue . pop_back ();
+  auto jumpto_thread = threads[current_tid] . get ();
+  jumpto_thread -> state = RUNNING;
+  jumpto_thread -> quantum_life++;
+  total_quantums++;
 
   //wake up threads
   for (int i = 0; i < MAX_THREAD_NUM; i++)
@@ -161,21 +163,15 @@ void timer_handler (int sig, ThreadState state)
       }
     }
   }
-
-  current_tid = ready_queue . back ();
-  ready_queue . pop_back ();
-  auto jumpto_thread = threads[current_tid] . get ();
-  jumpto_thread -> state = RUNNING;
-
-
+  unblock_signal();
   set_timer ();
-  unblock_signal ();
+
   siglongjmp (jumpto_thread -> env, 1);
-  unblock_signal ();
 }
 
 void timer_handler (int sig)
 {
+  block_signal();
   timer_handler (sig, READY);
 }
 
@@ -190,23 +186,38 @@ int uthread_init (int quantum_usecs)
   // Save quantum_usecs_sys for later use
   quantum_usecs_sys = quantum_usecs;
 
+  ready_queue=std::vector<int>();
   // Set up main thread
   threads[0] = make_unique<Thread> ();
   threads[0] -> id = 0;
   threads[0] -> state = RUNNING;
+  threads[0] -> sleep_until= -1;
+  threads[0] -> quantum_life =1;
+  total_quantums=1;
 
-
+  if (sigsetjmp(threads[0] -> env, 1)!=0){
+    unblock_signal();
+    return 0;
+  }
   // Install timer_handler as the signal handler for SIGALRM
   sa . sa_handler = &timer_handler;
+  if (sigaction (SIGALRM, &sa, nullptr) < 0)
+  {
+    std::cerr << "system error: couldn't mask the signal SIGALRM\n";
+    free_memory ();
+    exit (1);
+  }
+
   set_timer ();
 
-  // Return success
+//  unblock_signal();
+
   return 0;
 }
 
 void set_timer ()
 {
-  if (sigaction (SIGALRM, &sa, nullptr) < 0)
+  if (sigaction (SIGVTALRM, &sa, nullptr) < 0)
   {
     std::cerr << "system error: couldn't mask the signal SIGALRM\n";
     free_memory ();
@@ -222,7 +233,7 @@ void set_timer ()
   timer . it_interval . tv_usec = quantum_usecs_sys;    // following time intervals, microseconds part
 
   // Start the timer
-  if (setitimer (ITIMER_REAL, &timer, nullptr) < 0)
+  if (setitimer (ITIMER_VIRTUAL, &timer, nullptr) < 0)
   {
     std::cerr << "system error: couldn't set the timer\n";
     free_memory ();
@@ -234,7 +245,7 @@ int get_min_index ()
 {
   for (int i = 0; i < MAX_THREAD_NUM; i++)
   {
-    if (threads[i])
+    if (!threads[i])
     {
       return i;
     }
@@ -287,6 +298,7 @@ int uthread_spawn (thread_entry_point entry_point)
   }
   threads[tid] -> state = READY;
   threads[tid] -> id = tid;
+  threads[tid] -> sleep_until= -1;
   ready_queue . insert (ready_queue . begin (), tid);
   unblock_signal ();
   return tid;
@@ -359,7 +371,8 @@ int uthread_resume (int tid)
     return -1;
   }
   threads[tid] -> state = threads[tid] -> state == RUNNING ? RUNNING : READY;
-  if (threads[tid] -> sleep_until == -1)
+  if (threads[tid] -> sleep_until == -1 &&
+  std::find(ready_queue.begin(), ready_queue.end(), tid) == ready_queue.end())
   {
     ready_queue . insert (ready_queue . begin (), tid);
   }
@@ -382,8 +395,8 @@ int uthread_sleep (int num_quantums)
     unblock_signal ();
     return -1;
   }
-  threads[current_tid] -> sleep_until = total_quantums + num_quantums ; //todo should add 1?
-  timer_handler (SIGALRM, BLOCKED);
+  threads[current_tid] -> sleep_until = total_quantums + num_quantums; //todo should add 1?
+  timer_handler (SIGALRM, READY);
   unblock_signal ();
   return 0;
 }
@@ -395,7 +408,7 @@ int uthread_get_tid ()
 
 int uthread_get_total_quantums ()
 {
-  return quantum_usecs_sys;
+  return total_quantums;
 }
 
 int uthread_get_quantums (int tid)
@@ -406,6 +419,6 @@ int uthread_get_quantums (int tid)
     unblock_signal ();
     return -1;
   }
-  return threads[tid]->quantum_life+1;
+  return threads[tid]->quantum_life;
 }
 
