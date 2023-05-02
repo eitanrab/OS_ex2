@@ -139,7 +139,7 @@ void timer_handler (int sig, ThreadState state)
   if (curr_thread->state == TERMINATED){
     threads[current_tid]. reset ();
   }
-  else if (curr_thread->state ==READY){
+  else if (curr_thread->state ==READY && curr_thread->sleep_until ==-1 ){
     ready_queue . insert (ready_queue . begin (), current_tid);
   }
 
@@ -395,8 +395,8 @@ int uthread_sleep (int num_quantums)
     unblock_signal ();
     return -1;
   }
-  threads[current_tid] -> sleep_until = total_quantums + num_quantums ; //todo should add 1?
-  timer_handler (SIGALRM, BLOCKED);
+  threads[current_tid] -> sleep_until = total_quantums + num_quantums; //todo should add 1?
+  timer_handler (SIGALRM, READY);
   unblock_signal ();
   return 0;
 }
@@ -421,6 +421,3 @@ int uthread_get_quantums (int tid)
   }
   return threads[tid]->quantum_life;
 }
-
-
-//sdfsdfsdfds
