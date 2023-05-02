@@ -87,7 +87,7 @@ int current_tid = 0;
 std::vector<int> ready_queue;
 std::unique_ptr<Thread> threads[MAX_THREAD_NUM];
 
-struct sigaction sa{};
+struct sigaction sa {};
 struct itimerval timer;
 
 void set_timer ();
@@ -124,11 +124,10 @@ void unblock_signal ()
 void timer_handler (int sig, ThreadState state)
 {
   block_signal ();
-  if (sigsetjmp(threads[current_tid] -> env, 1) != 0)
-  {
-    unblock_signal ();
-    set_timer ();
-    unblock_signal ();
+  if(sigsetjmp(threads[current_tid]->env, 1) != 0 ){
+    unblock_signal();
+    set_timer();
+    unblock_signal();
     return;
   }
 
@@ -137,14 +136,13 @@ void timer_handler (int sig, ThreadState state)
 
 
   //if terminate, reset the thread
-  if (curr_thread -> state == TERMINATED)
-  {
-    threads[current_tid] . reset ();
+  if (curr_thread->state == TERMINATED){
+    threads[current_tid]. reset ();
   }
-  else if (curr_thread -> state == READY)
-  {
+  else if (curr_thread->state ==READY && curr_thread->sleep_until ==-1 ){
     ready_queue . insert (ready_queue . begin (), current_tid);
   }
+
 
   current_tid = ready_queue . back ();
   ready_queue . pop_back ();
@@ -156,7 +154,7 @@ void timer_handler (int sig, ThreadState state)
   //wake up threads
   for (int i = 0; i < MAX_THREAD_NUM; i++)
   {
-    if (threads[i] != nullptr and threads[i] -> sleep_until == total_quantums)
+    if (threads[i]!= nullptr and threads[i] -> sleep_until == total_quantums)
     {
       threads[i] -> sleep_until = -1;
       if (threads[i] -> state == READY)
@@ -165,7 +163,7 @@ void timer_handler (int sig, ThreadState state)
       }
     }
   }
-  unblock_signal ();
+  unblock_signal();
   set_timer ();
 
   siglongjmp (jumpto_thread -> env, 1);
@@ -173,7 +171,7 @@ void timer_handler (int sig, ThreadState state)
 
 void timer_handler (int sig)
 {
-  block_signal ();
+  block_signal();
   timer_handler (sig, READY);
 }
 
@@ -188,18 +186,17 @@ int uthread_init (int quantum_usecs)
   // Save quantum_usecs_sys for later use
   quantum_usecs_sys = quantum_usecs;
 
-  ready_queue = std::vector<int> ();
+  ready_queue=std::vector<int>();
   // Set up main thread
   threads[0] = make_unique<Thread> ();
   threads[0] -> id = 0;
   threads[0] -> state = RUNNING;
-  threads[0] -> sleep_until = -1;
-  threads[0] -> quantum_life = 1;
-  total_quantums = 1;
+  threads[0] -> sleep_until= -1;
+  threads[0] -> quantum_life =1;
+  total_quantums=1;
 
-  if (sigsetjmp(threads[0] -> env, 1) != 0)
-  {
-    unblock_signal ();
+  if (sigsetjmp(threads[0] -> env, 1)!=0){
+    unblock_signal();
     return 0;
   }
   // Install timer_handler as the signal handler for SIGALRM
@@ -301,7 +298,7 @@ int uthread_spawn (thread_entry_point entry_point)
   }
   threads[tid] -> state = READY;
   threads[tid] -> id = tid;
-  threads[tid] -> sleep_until = -1;
+  threads[tid] -> sleep_until= -1;
   ready_queue . insert (ready_queue . begin (), tid);
   unblock_signal ();
   return tid;
@@ -375,8 +372,7 @@ int uthread_resume (int tid)
   }
   threads[tid] -> state = threads[tid] -> state == RUNNING ? RUNNING : READY;
   if (threads[tid] -> sleep_until == -1 &&
-      std::find (ready_queue . begin (), ready_queue . end (), tid)
-      == ready_queue . end ())
+      std::find(ready_queue.begin(), ready_queue.end(), tid) == ready_queue.end())
   {
     ready_queue . insert (ready_queue . begin (), tid);
   }
@@ -386,10 +382,9 @@ int uthread_resume (int tid)
 int uthread_sleep (int num_quantums)
 {
   block_signal ();
-  if (num_quantums <= 0)
+  if (num_quantums < 0)//todo is this the condition
   {
-    std::cerr << THREAD_LIB_ERR
-              << "uthread_sleep non-positive number of qunatums"
+    std::cerr << THREAD_LIB_ERR << "uthread_sleep negative number of qunatums"
               << std::endl;
     unblock_signal ();
     return -1;
@@ -400,8 +395,8 @@ int uthread_sleep (int num_quantums)
     unblock_signal ();
     return -1;
   }
-  threads[current_tid] -> sleep_until = total_quantums + num_quantums;
-  timer_handler (SIGALRM, BLOCKED);
+  threads[current_tid] -> sleep_until = total_quantums + num_quantums; //todo should add 1?
+  timer_handler (SIGALRM, READY);
   unblock_signal ();
   return 0;
 }
@@ -424,6 +419,5 @@ int uthread_get_quantums (int tid)
     unblock_signal ();
     return -1;
   }
-  return threads[tid] -> quantum_life;
+  return threads[tid]->quantum_life;
 }
-

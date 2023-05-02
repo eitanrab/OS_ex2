@@ -372,7 +372,7 @@ int uthread_resume (int tid)
   }
   threads[tid] -> state = threads[tid] -> state == RUNNING ? RUNNING : READY;
   if (threads[tid] -> sleep_until == -1 &&
-  std::find(ready_queue.begin(), ready_queue.end(), tid) == ready_queue.end())
+      std::find(ready_queue.begin(), ready_queue.end(), tid) == ready_queue.end())
   {
     ready_queue . insert (ready_queue . begin (), tid);
   }
@@ -422,3 +422,5 @@ int uthread_get_quantums (int tid)
   return threads[tid]->quantum_life;
 }
 
+
+//sdfsdfsdfds
