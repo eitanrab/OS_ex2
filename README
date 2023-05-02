@@ -1,0 +1,14 @@
+eitan.rab, davidkalech
+Eitan Rabinovich 318894763, David Kalech 206555070
+EX: 2
+
+FILES:
+uthreads.cpp -- an implementation of a thread library in C++,
+                including a main thread and additional threads with different
+                states, quantum time, and sleep capability. The code includes
+                signal handling for timer interrupts and a ready queue for
+                scheduling threads.
+
+REMARKS:
+
+ANSWERS:
