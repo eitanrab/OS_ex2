@@ -101,13 +101,13 @@ void free_memory ()
 
 void block_signal ()
 {
-//  if (sigprocmask (SIG_BLOCK, &sa . sa_mask, nullptr))
-//  {
-//    std::cerr << SYSCALL_ERR << "sigprocmask failure. sys block error"
-//              << std::endl;
-//    free_memory ();
-//    exit (1);
-//  }
+  if (sigprocmask (SIG_BLOCK, &sa . sa_mask, nullptr))
+  {
+    std::cerr << SYSCALL_ERR << "sigprocmask failure. sys block error"
+              << std::endl;
+    free_memory ();
+    exit (1);
+  }
 }
 
 void unblock_signal ()
@@ -141,7 +141,7 @@ void timer_handler (int sig, ThreadState state)
   {
     threads[current_tid] . reset ();
   }
-  else if (curr_thread -> state == READY)
+  else if (curr_thread -> state == READY && curr_thread->sleep_until == -1)
   {
     ready_queue . insert (ready_queue . begin (), current_tid);
   }
@@ -401,7 +401,7 @@ int uthread_sleep (int num_quantums)
     return -1;
   }
   threads[current_tid] -> sleep_until = total_quantums + num_quantums;
-  timer_handler (SIGALRM, BLOCKED);
+  timer_handler (SIGALRM, READY);
   unblock_signal ();
   return 0;
 }
