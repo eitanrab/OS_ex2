@@ -4,15 +4,9 @@
 #include "uthreads.h"
 #include <iostream>
 #include <queue>
-#include <csetjmp>
-#include <csignal>
 #include <sys/time.h>
-#include <stdio.h>
 #include <setjmp.h>
 #include <signal.h>
-#include <unistd.h>
-#include <sys/time.h>
-#include <stdbool.h>
 #include <cstdlib>
 #include <memory>
 #include <algorithm>
@@ -104,7 +98,7 @@ void block_signal ()
 {
   sigemptyset (&set);
   sigaddset (&set, SIGVTALRM);
-  if (sigprocmask (SIG_BLOCK, & set, nullptr))
+  if (sigprocmask (SIG_BLOCK, &set, nullptr))
   {
     std::cerr << SYSCALL_ERR << "sigprocmask failure. sys block error"
               << std::endl;
@@ -146,7 +140,7 @@ void timer_handler (int sig, ThreadState state)
   {
     threads[current_tid] . reset ();
   }
-  else if (curr_thread -> state == READY && curr_thread->sleep_until == -1)
+  else if (curr_thread -> state == READY && curr_thread -> sleep_until == -1)
   {
     ready_queue . insert (ready_queue . begin (), current_tid);
   }
