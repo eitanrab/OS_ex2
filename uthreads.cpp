@@ -88,6 +88,7 @@ std::vector<int> ready_queue;
 std::unique_ptr<Thread> threads[MAX_THREAD_NUM];
 
 struct sigaction sa{};
+sigset_t set;
 struct itimerval timer;
 
 void set_timer ();
@@ -101,7 +102,9 @@ void free_memory ()
 
 void block_signal ()
 {
-  if (sigprocmask (SIG_BLOCK, &sa . sa_mask, nullptr))
+  sigemptyset (&set);
+  sigaddset (&set, SIGVTALRM);
+  if (sigprocmask (SIG_BLOCK, & set, nullptr))
   {
     std::cerr << SYSCALL_ERR << "sigprocmask failure. sys block error"
               << std::endl;
@@ -112,7 +115,9 @@ void block_signal ()
 
 void unblock_signal ()
 {
-  if (sigprocmask (SIG_UNBLOCK, &sa . sa_mask, nullptr))
+  sigemptyset (&set);
+  sigaddset (&set, SIGVTALRM);
+  if (sigprocmask (SIG_UNBLOCK, &set, nullptr))
   {
     std::cerr << SYSCALL_ERR << "sigprocmask failure. sys unblock error"
               << std::endl;
@@ -204,9 +209,9 @@ int uthread_init (int quantum_usecs)
   }
   // Install timer_handler as the signal handler for SIGALRM
   sa . sa_handler = &timer_handler;
-  if (sigaction (SIGALRM, &sa, nullptr) < 0)
+  if (sigaction (SIGVTALRM, &sa, nullptr) < 0)
   {
-    std::cerr << "system error: couldn't mask the signal SIGALRM\n";
+    std::cerr << "system error: couldn't mask the signal SIGVTALRM\n";
     free_memory ();
     exit (1);
   }
@@ -222,7 +227,7 @@ void set_timer ()
 {
   if (sigaction (SIGVTALRM, &sa, nullptr) < 0)
   {
-    std::cerr << "system error: couldn't mask the signal SIGALRM\n";
+    std::cerr << "system error: couldn't mask the signal SIGVTALRM\n";
     free_memory ();
     exit (1);
   }
@@ -325,7 +330,7 @@ int uthread_terminate (int tid)
 
   if (tid == current_tid)
   {
-    timer_handler (SIGALRM, TERMINATED);
+    timer_handler (SIGVTALRM, TERMINATED);
   }
 
   ready_queue . erase (std::remove (ready_queue . begin (),
@@ -359,7 +364,7 @@ int uthread_block (int tid)
 
   if (tid == current_tid)
   {
-    timer_handler (SIGALRM, BLOCKED);
+    timer_handler (SIGVTALRM, BLOCKED);
   }
   unblock_signal ();
   return 0;
@@ -401,7 +406,7 @@ int uthread_sleep (int num_quantums)
     return -1;
   }
   threads[current_tid] -> sleep_until = total_quantums + num_quantums;
-  timer_handler (SIGALRM, READY);
+  timer_handler (SIGVTALRM, READY);
   unblock_signal ();
   return 0;
 }
