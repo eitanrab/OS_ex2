@@ -130,7 +130,18 @@ void timer_handler (int sig, ThreadState state)
     unblock_signal ();
     return;
   }
-
+    //wake up threads
+    for (int i = 0; i < MAX_THREAD_NUM; i++)
+    {
+        if (threads[i] != nullptr and threads[i] -> sleep_until == total_quantums)
+        {
+            threads[i] -> sleep_until = -1;
+            if (threads[i] -> state == READY)
+            {
+                uthread_resume (i);
+            }
+        }
+    }
   auto curr_thread = threads[current_tid] . get ();
   curr_thread -> state = state;
 
@@ -152,18 +163,7 @@ void timer_handler (int sig, ThreadState state)
   jumpto_thread -> quantum_life++;
   total_quantums++;
 
-  //wake up threads
-  for (int i = 0; i < MAX_THREAD_NUM; i++)
-  {
-    if (threads[i] != nullptr and threads[i] -> sleep_until == total_quantums)
-    {
-      threads[i] -> sleep_until = -1;
-      if (threads[i] -> state == READY)
-      {
-        uthread_resume (i);
-      }
-    }
-  }
+
   unblock_signal ();
   set_timer ();
 
