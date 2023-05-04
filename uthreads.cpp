@@ -227,12 +227,12 @@ void set_timer ()
   }
 
   // Configure the timer to expire after quantum_usecs_sys
-  timer . it_value . tv_sec = 0;        // first time interval, seconds part
-  timer . it_value . tv_usec = quantum_usecs_sys;        // first time interval, microseconds part
+  timer . it_value . tv_sec = quantum_usecs_sys/1000000;        // first time interval, seconds part
+  timer . it_value . tv_usec = quantum_usecs_sys%1000000;        // first time interval, microseconds part
 
   // configure the timer to expire every 3 sec after that.
-  timer . it_interval . tv_sec = 0;    // following time intervals, seconds part
-  timer . it_interval . tv_usec = quantum_usecs_sys;    // following time intervals, microseconds part
+  timer . it_interval . tv_sec = quantum_usecs_sys/1000000;    // following time intervals, seconds part
+  timer . it_interval . tv_usec = quantum_usecs_sys%1000000;    // following time intervals, microseconds part
 
   // Start the timer
   if (setitimer (ITIMER_VIRTUAL, &timer, nullptr) < 0)
